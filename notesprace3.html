@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notesprace</title>
+<style>
+  :root {
+    --bg: #1a1a1a; --bg-header: #151515; --border: #262626; --border-btn: #2e2e2e;
+    --text: #cfcfcf; --text-muted: #777; --text-faint: #444; --text-hover: #ccc;
+    --error: #c46a6a; --format-bg: #151515; --format-hover: #222;
+  }
+  body.light-mode {
+    --bg: #f8f9fa; --bg-header: #e9ecef; --border: #dee2e6; --border-btn: #ced4da;
+    --text: #212529; --text-muted: #6c757d; --text-faint: #adb5bd; --text-hover: #000;
+    --error: #dc3545; --format-bg: #e9ecef; --format-hover: #dee2e6;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font-family: monospace; display: flex; flex-direction: column; }
+  
+  /* LOADING SCREEN */
+  #loadingScreen {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: var(--bg); z-index: 99999; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; transition: opacity 0.4s ease;
+  }
+  #loadingScreen.fade-out { opacity: 0; pointer-events: none; }
+  #loadingText { font-size: 20px; font-weight: bold; color: var(--text); margin-bottom: 20px; letter-spacing: 2px; }
+  .progress-container { width: 80%; max-width: 300px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  #progressBar { height: 100%; width: 0%; background: var(--text); border-radius: 3px; transition: width 0.1s linear; }
+  #progressPercent { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+
+  /* Screens */
+  .screen { display: none; flex-direction: column; height: 100%; width: 100%; overflow: hidden; }
+  .screen.active { display: flex; }
+
+  /* PIN Screen */
+  #pinScreen { align-items: center; justify-content: center; padding: 20px; text-align: center; gap: 15px; }
+  #pinScreen input { background: var(--bg-header); border: 1px solid var(--border-btn); color: var(--text); padding: 10px; font-size: 20px; text-align: center; border-radius: 4px; font-family: monospace; width: 100%; max-width: 250px; }
+  #pinScreen button { background: var(--format-bg); border: 1px solid var(--border-btn); color: var(--text); padding: 10px; font-size: 14px; border-radius: 4px; cursor: pointer; width: 100%; max-width: 250px; }
+  #pinScreen .link { background: none; border: none; text-decoration: underline; color: var(--text-muted); font-size: 12px; cursor: pointer; }
+  .error-msg { color: var(--error); font-size: 12px; height: 16px; }
+  .hidden { display: none !important; }
+
+  /* Home Screen */
+  .home-header { padding: 15px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-header); }
+  .home-header h2 { margin: 0; font-size: 16px; }
+  #notesList { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
+  .note-card { background: var(--format-bg); border: 1px solid var(--border-btn); padding: 15px; border-radius: 6px; cursor: pointer; }
+  .note-card h3 { margin: 0 0 5px 0; font-size: 14px; }
+  .note-card p { margin: 0; font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .home-footer { padding: 15px; border-top: 1px solid var(--border); display: flex; gap: 10px; background: var(--bg-header); }
+  .home-footer button { flex: 1; padding: 12px; border-radius: 6px; cursor: pointer; font-family: monospace; font-weight: bold; }
+  #createBtn { background: var(--format-bg); color: var(--text); border: 1px solid var(--border-btn); }
+  #panicBtn { color: #ff4d4d; border: 1px solid #ff4d4d; background: transparent; text-decoration: underline; flex: 0 0 auto; }
+
+  /* Editor Screen */
+  .editor-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--bg-header); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .editor-header button, .editor-header select { background: transparent; border: 1px solid var(--border-btn); color: var(--text); padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+  #noteTitle { flex: 1; background: transparent; border: 1px solid transparent; color: var(--text); font-weight: bold; font-size: 14px; padding: 4px; outline: none; min-width: 100px; }
+  #noteTitle:focus { border-color: var(--border-btn); }
+  .toolbar { display: flex; gap: 6px; padding: 6px 12px; background: var(--format-bg); border-bottom: 1px solid var(--border); flex-wrap: wrap; align-items: center; }
+  .toolbar button { background: transparent; border: 1px solid var(--border-btn); color: var(--text); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-family: monospace; font-weight: bold; }
+  .toolbar input[type="number"] { width: 45px; background: transparent; border: 1px solid var(--border-btn); color: var(--text); padding: 4px; border-radius: 4px; font-family: monospace; }
+  .toolbar input[type="color"] { width: 30px; height: 30px; padding: 0; border: 1px solid var(--border-btn); background: transparent; cursor: pointer; }
+  #editor { flex: 1; padding: 15px; outline: none; overflow-y: auto; line-height: 1.6; }
+  #editor img { max-width: 100%; border-radius: 4px; margin: 10px 0; }
+  
+  .editor-footer { 
+    padding: 8px 12px; 
+    border-top: 1px solid var(--border); 
+    background: var(--bg-header); 
+    display: flex; 
+    gap: 8px; 
+    overflow-x: auto; 
+    flex-wrap: nowrap; 
+  }
+  .editor-footer button { 
+    background: transparent; 
+    border: 1px solid var(--border-btn); 
+    color: var(--text-muted); 
+    padding: 6px 10px; 
+    border-radius: 4px; 
+    cursor: pointer; 
+    white-space: nowrap; 
+  }
+  .editor-footer button:hover { color: var(--text); border-color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+  <!-- LOADING SCREEN -->
+  <div id="loadingScreen">
+    <div id="loadingText">Notesprace</div>
+    <div class="progress-container">
+      <div id="progressBar"></div>
+    </div>
+    <div id="progressPercent">0%</div>
+  </div>
+
+  <!-- PIN SCREEN -->
+  <div id="pinScreen" class="screen active">
+    <h2 id="pinTitle">Create a PIN</h2>
+    
+    <div id="pinEntry">
+      <input type="password" id="pinInput" maxlength="4" inputmode="numeric" placeholder="••••"><br><br>
+      <div class="error-msg" id="pinError"></div>
+      <button id="pinSubmit">Submit</button><br>
+      <button id="forgotBtn" class="link hidden">Forgot PIN?</button>
+    </div>
+
+    <div id="secSetup" class="hidden">
+      <p style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">Set a recovery question.</p>
+      <input type="text" id="secQ" placeholder="Question (e.g. Favorite color?)"><br><br>
+      <input type="text" id="secA" placeholder="Answer"><br><br>
+      <div class="error-msg" id="secError"></div>
+      <button id="saveSecBtn">Save</button>
+    </div>
+
+    <div id="recovery" class="hidden">
+      <p id="recoverQText" style="font-weight:bold; margin-bottom:10px;"></p>
+      <input type="text" id="recoverA" placeholder="Your Answer"><br><br>
+      <div class="error-msg" id="recoverError"></div>
+      <button id="verifyBtn">Verify</button><br>
+      <button id="cancelRecoverBtn" class="link">Cancel</button>
+    </div>
+  </div>
+
+  <!-- HOME SCREEN -->
+  <div id="homeScreen" class="screen">
+    <div class="home-header">
+      <h2>Notesprace</h2>
+      <button id="themeToggleHome" style="background:none; border:none; color:var(--text); font-size:16px; cursor:pointer;">☀</button>
+    </div>
+    <div id="notesList"></div>
+    <div class="home-footer">
+      <button id="createBtn">+ New Note</button>
+      <button id="panicBtn">PANIC</button>
+    </div>
+  </div>
+
+  <!-- EDITOR SCREEN -->
+  <div id="editorScreen" class="screen">
+    <div class="editor-header">
+      <button id="backBtn">←</button>
+      <input type="text" id="noteTitle" placeholder="Title">
+      <button id="themeToggleEdit" style="background:none; border:none; color:var(--text); font-size:16px; cursor:pointer;">☀</button>
+    </div>
+    <div class="toolbar">
+      <button data-cmd="bold"><b>B</b></button>
+      <button data-cmd="italic"><i>I</i></button>
+      <button data-cmd="underline"><u>U</u></button>
+      <button data-cmd="strikeThrough"><s>S</s></button>
+      <button data-cmd="formatBlock" data-val="h1">H1</button>
+      <button data-cmd="formatBlock" data-val="h2">H2</button>
+      <input type="number" id="fontSize" value="14" min="8" max="72">
+      <button id="applySize">Size</button>
+      <button data-cmd="insertUnorderedList">•</button>
+      <button data-cmd="justifyLeft">L</button>
+      <button data-cmd="justifyCenter">C</button>
+      <button data-cmd="justifyRight">R</button>
+      <input type="color" id="textColor" value="#cfcfcf">
+      <button id="imgBtn">Img</button>
+    </div>
+    <div id="editor" contenteditable="true"></div>
+    
+    <div class="editor-footer">
+      <!-- Direct Export Buttons with clear labels -->
+      <button id="exportHtmlBtn">.html</button>
+      <button id="exportTxtBtn">.txt</button>
+      <button id="exportSvgBtn">.svg</button>
+      <button id="exportPngBtn">.png</button>
+      
+      <button id="markdownBtn">markdown</button>
+      <button id="timestampBtn">timestamp</button>
+      <button id="fullscreenBtn">fullscreen</button>
+      <button id="copyBtn">copy</button>
+      <button id="clearBtn">clear</button>
+    </div>
+  </div>
+
+  <input type="file" id="imgInput" accept="image/*" style="display:none">
+
+<script>
+  let progress = 0;
+  const progressBar = document.getElementById('progressBar');
+  const progressPercent = document.getElementById('progressPercent');
+  const loadingScreen = document.getElementById('loadingScreen');
+
+  const loadInterval = setInterval(() => {
+    progress += Math.floor(Math.random() * 15) + 5; 
+    if (progress > 100) progress = 100;
+    progressBar.style.width = progress + '%';
+    progressPercent.textContent = progress + '%';
+
+    if (progress === 100) {
+      clearInterval(loadInterval);
+      setTimeout(() => { loadingScreen.classList.add('fade-out'); }, 400);
+    }
+  }, 80);
+
+  let currentPin = localStorage.getItem('pin');
+  let secQ = localStorage.getItem('secQ');
+  let secA = localStorage.getItem('secA');
+  let notes = JSON.parse(localStorage.getItem('notesList')) || [];
+  let currentNoteId = null;
+  let isFullscreen = false;
+
+  const screens = document.querySelectorAll('.screen');
+  const pinTitle = document.getElementById('pinTitle');
+  const pinEntry = document.getElementById('pinEntry');
+  const secSetup = document.getElementById('secSetup');
+  const recovery = document.getElementById('recovery');
+  const pinInput = document.getElementById('pinInput');
+  const pinError = document.getElementById('pinError');
+  const pinSubmit = document.getElementById('pinSubmit');
+  const forgotBtn = document.getElementById('forgotBtn');
+  const notesList = document.getElementById('notesList');
+  const editor = document.getElementById('editor');
+  const noteTitle = document.getElementById('noteTitle');
+
+  function showScreen(id) {
+    screens.forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+  }
+
+  function initPin() {
+    if (!currentPin) {
+      pinTitle.textContent = "Create a PIN";
+      pinEntry.classList.remove('hidden');
+      secSetup.classList.add('hidden');
+      pinSubmit.textContent = "Next";
+    } else {
+      pinTitle.textContent = "Enter PIN";
+      pinEntry.classList.remove('hidden');
+      secSetup.classList.add('hidden');
+      pinSubmit.textContent = "Unlock";
+      if (secQ) forgotBtn.classList.remove('hidden');
+    }
+  }
+
+  pinSubmit.addEventListener('click', () => {
+    const val = pinInput.value;
+    if (!currentPin) {
+      if (val.length === 4) {
+        currentPin = val;
+        pinEntry.classList.add('hidden');
+        secSetup.classList.remove('hidden');
+        pinTitle.textContent = "Security Question";
+      } else {
+        pinError.textContent = "Must be 4 digits";
+      }
+    } else {
+      if (val === currentPin) {
+        pinError.textContent = "";
+        pinInput.value = "";
+        unlockApp();
+      } else {
+        pinError.textContent = "Incorrect PIN";
+        pinInput.value = "";
+      }
+    }
+  });
+
+  document.getElementById('saveSecBtn').addEventListener('click', () => {
+    const q = document.getElementById('secQ').value;
+    const a = document.getElementById('secA').value;
+    if (q && a) {
+      secQ = q; secA = a.toLowerCase();
+      localStorage.setItem('pin', currentPin);
+      localStorage.setItem('secQ', secQ);
+      localStorage.setItem('secA', secA);
+      unlockApp();
+    } else {
+      document.getElementById('secError').textContent = "Both fields required";
+    }
+  });
+
+  forgotBtn.addEventListener('click', () => {
+    pinEntry.classList.add('hidden');
+    recovery.classList.remove('hidden');
+    document.getElementById('recoverQText').textContent = secQ;
+  });
+
+  document.getElementById('cancelRecoverBtn').addEventListener('click', () => {
+    recovery.classList.add('hidden');
+    pinEntry.classList.remove('hidden');
+  });
+
+  document.getElementById('verifyBtn').addEventListener('click', () => {
+    const ans = document.getElementById('recoverA').value.toLowerCase();
+    if (ans === secA) {
+      alert("Verified! Please set a new PIN.");
+      currentPin = null;
+      localStorage.removeItem('pin');
+      document.getElementById('recoverA').value = "";
+      recovery.classList.add('hidden');
+      initPin();
+    } else {
+      document.getElementById('recoverError').textContent = "Incorrect answer";
+    }
+  });
+
+  function unlockApp() {
+    showScreen('homeScreen');
+    renderHome();
+  }
+
+  function renderHome() {
+    notesList.innerHTML = '';
+    if (notes.length === 0) {
+      notesList.innerHTML = '<p style="color:var(--text-muted); text-align:center;">No notes yet.</p>';
+      return;
+    }
+    notes.forEach((note, index) => {
+      const div = document.createElement('div');
+      div.className = 'note-card';
+      div.innerHTML = `<h3>${note.title || 'Untitled'}</h3><p>${note.preview || 'Empty note...'}</p>`;
+      div.onclick = () => openNote(index);
+      notesList.appendChild(div);
+    });
+  }
+
+  document.getElementById('createBtn').addEventListener('click', () => {
+    notes.unshift({ title: 'New Note', content: '', preview: 'Empty note...' });
+    saveNotes();
+    openNote(0);
+  });
+
+  document.getElementById('panicBtn').addEventListener('click', () => {
+    localStorage.clear();
+    location.reload();
+  });
+
+  function openNote(index) {
+    currentNoteId = index;
+    const note = notes[index];
+    noteTitle.value = note.title || '';
+    editor.innerHTML = note.content || '';
+    showScreen('editorScreen');
+  }
+
+  document.getElementById('backBtn').addEventListener('click', () => {
+    saveCurrentNote();
+    showScreen('homeScreen');
+    renderHome();
+  });
+
+  noteTitle.addEventListener('input', () => {
+    if (currentNoteId !== null) {
+      notes[currentNoteId].title = noteTitle.value;
+      saveNotes();
+    }
+  });
+
+  editor.addEventListener('input', () => {
+    if (currentNoteId !== null) {
+      notes[currentNoteId].content = editor.innerHTML;
+      notes[currentNoteId].preview = editor.innerText.substring(0, 50);
+      saveNotes();
+    }
+  });
+
+  function saveCurrentNote() {
+    if (currentNoteId !== null) {
+      notes[currentNoteId].content = editor.innerHTML;
+      saveNotes();
+    }
+  }
+
+  function saveNotes() {
+    localStorage.setItem('notesList', JSON.stringify(notes));
+  }
+
+  document.querySelectorAll('.toolbar button[data-cmd]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.execCommand(btn.dataset.cmd, false, btn.dataset.val || null);
+      editor.focus();
+    });
+  });
+
+  document.getElementById('applySize').addEventListener('click', () => {
+    const size = document.getElementById('fontSize').value;
+    document.execCommand('fontSize', false, '7');
+    const fontElements = editor.querySelectorAll('font[size="7"]');
+    fontElements.forEach(el => {
+      el.removeAttribute('size');
+      el.style.fontSize = size + 'px';
+    });
+  });
+
+  document.getElementById('textColor').addEventListener('input', (e) => {
+    document.execCommand('foreColor', false, e.target.value);
+  });
+
+  document.getElementById('imgBtn').addEventListener('click', () => document.getElementById('imgInput').click());
+  document.getElementById('imgInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const cleanData = canvas.toDataURL('image/jpeg', 0.8);
+        document.execCommand('insertHTML', false, `<img src="${cleanData}"><br>`);
+        saveCurrentNote();
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  });
+
+  document.getElementById('markdownBtn').addEventListener('click', () => {
+    let text = editor.innerHTML;
+    text = text.replace(/<b>(.*?)<\/b>/g, '**$1**').replace(/<i>(.*?)<\/i>/g, '*$1*');
+    navigator.clipboard.writeText(text);
+    alert('Markdown copied to clipboard');
+  });
+
+  document.getElementById('timestampBtn').addEventListener('click', () => {
+    document.execCommand('insertHTML', false, `<b>[${new Date().toLocaleString()}]</b> `);
+    saveCurrentNote();
+  });
+
+  document.getElementById('fullscreenBtn').addEventListener('click', () => {
+    isFullscreen = !isFullscreen;
+    document.querySelector('.editor-header').style.display = isFullscreen ? 'none' : 'flex';
+    document.querySelector('.toolbar').style.display = isFullscreen ? 'none' : 'flex';
+    document.querySelector('.editor-footer').style.display = isFullscreen ? 'none' : 'flex';
+  });
+
+  document.getElementById('copyBtn').addEventListener('click', () => {
+    navigator.clipboard.writeText(editor.innerText);
+    alert('Copied text');
+  });
+
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    if (confirm('Clear note?')) {
+      editor.innerHTML = '';
+      saveCurrentNote();
+    }
+  });
+
+  // --- DIRECT EXPORT BUTTONS ---
+  document.getElementById('exportHtmlBtn').addEventListener('click', () => {
+    const blob = new Blob([editor.innerHTML], {type: 'text/html'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'note.html'; a.click();
+  });
+
+  document.getElementById('exportTxtBtn').addEventListener('click', () => {
+    const blob = new Blob([editor.innerText], {type: 'text/plain'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'note.txt'; a.click();
+  });
+
+  document.getElementById('exportSvgBtn').addEventListener('click', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml">${editor.innerHTML}</div></foreignObject></svg>`;
+    const blob = new Blob([svg], {type: 'image/svg+xml'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'note.svg'; a.click();
+  });
+
+  document.getElementById('exportPngBtn').addEventListener('click', () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 800;
+    canvas.height = 600;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = document.body.classList.contains('light-mode') ? '#f8f9fa' : '#1a1a1a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = document.body.classList.contains('light-mode') ? '#000' : '#fff';
+    ctx.font = '16px monospace';
+    const lines = editor.innerText.split('\n');
+    lines.forEach((line, i) => { ctx.fillText(line, 20, 40 + (i * 24)); });
+    const a = document.createElement('a'); a.href = canvas.toDataURL('image/png'); a.download = 'note.png'; a.click();
+  });
+
+  function toggleTheme() {
+    document.body.classList.toggle('light-mode');
+    const isLight = document.body.classList.contains('light-mode');
+    document.querySelectorAll('#themeToggleHome, #themeToggleEdit').forEach(b => b.textContent = isLight ? '🌙' : '☀');
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+  }
+  document.getElementById('themeToggleHome').addEventListener('click', toggleTheme);
+  document.getElementById('themeToggleEdit').addEventListener('click', toggleTheme);
+  if (localStorage.getItem('theme') === 'light') toggleTheme();
+
+  setTimeout(() => { initPin(); }, 100);
+</script>
+</body>
+</html>
